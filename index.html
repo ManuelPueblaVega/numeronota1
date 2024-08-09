@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reconocimiento de Notas Musicales con Números</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #333;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        #note {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Reconocimiento de Notas Musicales con Números</h1>
+    <canvas id="canvas" width="280" height="280"></canvas>
+    <p id="note"></p>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/tfjs-models"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const noteElement = document.getElementById('note');
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let model;
+
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 280, height: 280 } });
+            const videoElement = document.createElement('video');
+            videoElement.srcObject = stream;
+            videoElement.play();
+            return videoElement;
+        }
+
+        async function loadModel() {
+            return await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist_v1/model.json');
+        }
+
+        function playNote(frequency, duration) {
+            const oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+            const gainNode = audioContext.createGain();
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        function playNoteByNumber(number) {
+            const notes = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
+            const frequencies = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88];
+            
+            if (number >= 1 && number <= 7) {
+                const noteIndex = number - 1;
+                const note = notes[noteIndex];
+                const frequency = frequencies[noteIndex];
+                
+                noteElement.textContent = `${number}: ${note}`;
+                playNote(frequency, 0.5);
+            } else {
+                noteElement.textContent = "";
+            }
+        }
+
+        async function predictDigit(imageData) {
+            const tensor = tf.browser.fromPixels(imageData, 1)
+                .resizeBilinear([28, 28])
+                .toFloat()
+                .div(255.0)
+                .expandDims(0);
+            const prediction = await model.predict(tensor).data();
+            const index = prediction.indexOf(Math.max(...prediction));
+            return index + 1;
+        }
+
+        async function main() {
+            const video = await setupCamera();
+            model = await loadModel();
+
+            async function detect() {
+                ctx.drawImage(video, 0, 0, 280, 280);
+                const imageData = ctx.getImageData(0, 0, 280, 280);
+                const digit = await predictDigit(imageData);
+                playNoteByNumber(digit);
+                requestAnimationFrame(detect);
+            }
+            detect();
+        }
+
+        main();
+    </script>
+</body>
+</html>
